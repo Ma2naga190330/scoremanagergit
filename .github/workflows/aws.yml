@@ -24,20 +24,23 @@ jobs:
         key: ${{ secrets.SSH_KEY }}        # AWS_SSH_KEY から SSH_KEY に変更
         port: 22
         script: |
-          # 1. 一時作業フォルダをクリーンアップして最新コードをクローン
+          # 1. 一時作業フォルダをクリーンアップして移動
           rm -rf /home/ubuntu/score_temp
           mkdir -p /home/ubuntu/score_temp
           cd /home/ubuntu/score_temp
-          git clone --depth 1 git@github.com:${{ secrets.USER_NAME }}/scoremanagergit.git .
           
-          # 2. 本物のWebコンテンツ（webapp直下）を、空にした本番フォルダへ根こそぎコピー
-          # ★これで、scoremanager/ 階層を挟まずに index.jsp や WEB-INF が配置されます
+          # 🚀 GitHubが発行する一時トークン(github_token)を使って、認証エラーなしで確実にクローンする
+          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+          
+          # 2. 本物のWebコンテンツ（webapp直下）を本番フォルダへ上書きコピー
           sudo cp -r score/src/main/webapp/* /opt/tomcat10/webapps/score/
           
-          # 3. サーバー側にある最新の Dao.java を強制的にコンパイルする（直撃ビルド）
-          sudo javac -cp "/opt/tomcat10/lib/*:/opt/tomcat10/webapps/score/WEB-INF/classes" -d /opt/tomcat10/webapps/score/WEB-INF/classes /opt/tomcat10/webapps/score/WEB-INF/classes/dao/Dao.java
+          # 3. サーバー側にある最新の Dao.java をコンパイル（元ファイルが存在する場合のみ実行する安全な書き方に変更）
+          if [ -f "/opt/tomcat10/webapps/score/WEB-INF/classes/dao/Dao.java" ]; then
+            sudo javac -cp "/opt/tomcat10/lib/*:/opt/tomcat10/webapps/score/WEB-INF/classes" -d /opt/tomcat10/webapps/score/WEB-INF/classes /opt/tomcat10/webapps/score/WEB-INF/classes/dao/Dao.java
+          fi
           
-          # 4. Tomcatを綺麗な状態で起動する
+          # 4. Tomcatを起動
           sudo rm -rf /opt/tomcat10/work/Catalina/localhost/score
-          sudo /opt/tomcat10/bin/startup.sh
+          sudo /opt/tomcat10/bin/shutdown.sh
           sudo /opt/tomcat10/bin/startup.sh
