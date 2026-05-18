@@ -24,15 +24,21 @@ jobs:
         key: ${{ secrets.SSH_KEY }}        # AWS_SSH_KEY から SSH_KEY に変更
         port: 22
         script: |
-          # ① score フォルダへ移動
-          cd /opt/tomcat10/webapps/score
+          # 1. 自分のホームディレクトリ等、一時的な作業場所に移動して pull する
+          cd /home/ubuntu
           
-          # ② GitHubから最新のコードを引っ張ってくる
+          # もし作業フォルダがなければ初回だけ落とす（すでにある場合は cd scoremanagergit）
+          if [ ! -d "scoremanagergit" ]; then
+            git clone git@github.com:${{ secrets.USER_NAME }}/scoremanagergit.git
+          fi
+          cd scoremanagergit
           git pull origin main
           
-          # ③ 古いTomcatの作業キャッシュを削除
-          sudo rm -rf /opt/tomcat10/work/Catalina/localhost/score
+          # 2. 余計な外箱（scoremanager/scoremanager）の中身だけを、本番の score フォルダへ根こそぎコピー！
+          # ★ここのパスを実際のGitHubのフォルダ構造に合わせます
+          sudo cp -r scoremanager/scoremanager/* /opt/tomcat10/webapps/score/
           
-          # ④ Tomcatを再起動して変更を反映
+          # 3. 古いTomcatの作業キャッシュを削除して再起動
+          sudo rm -rf /opt/tomcat10/work/Catalina/localhost/score
           sudo /opt/tomcat10/bin/shutdown.sh
           sudo /opt/tomcat10/bin/startup.sh
