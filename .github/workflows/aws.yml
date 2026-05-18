@@ -2,10 +2,12 @@ name: Deploy to Amazon EC2 (Tomcat)
 
 on:
   push:
-    branches: [ "main" ]  # mainブランチにpushされたら自動起動
+    branches: [ "main" ]
 
+# 🚀 トークンエラーを回避するために設定を拡張
 permissions:
   contents: read
+  packages: read
 
 jobs:
   deploy:
@@ -15,32 +17,35 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: SSH and Deploy to EC2
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ secrets.HOST }}          # AWS_EC2_HOST から HOST に変更
-        username: ${{ secrets.USER_NAME }}  # AWS_EC2_USER から USER_NAME に変更
-        key: ${{ secrets.SSH_KEY }}        # AWS_SSH_KEY から SSH_KEY に変更
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USER_NAME }}
+        key: ${{ secrets.SSH_KEY }}
         port: 22
         script: |
-          # 1. 一時作業フォルダをクリーンアップして移動
+          # 1. 衝突して気絶しているTomcatを完全に強制終了してリセット
+          sudo killall -9 java || true
+          sudo /opt/tomcat10/bin/shutdown.sh || true
+          
+          # 2. 一時作業フォルダをクリーンアップ
           rm -rf /home/ubuntu/score_temp
           mkdir -p /home/ubuntu/score_temp
           cd /home/ubuntu/score_temp
           
-          # 🚀 GitHubが発行する一時トークン(github_token)を使って、認証エラーなしで確実にクローンする
-          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+          # 🚀 【修正】あなたのユーザー名を使って、HTTPS経由で確実にクローンを成功させます
+          git clone --depth 1 https://github.com/${{ secrets.USER_NAME }}/scoremanagergit.git .
           
-          # 2. 本物のWebコンテンツ（webapp直下）を本番フォルダへ上書きコピー
+          # 3. 本物のWebコンテンツ（webapp直下）を、本番フォルダへ根こそぎコピー
           sudo cp -r score/src/main/webapp/* /opt/tomcat10/webapps/score/
           
-          # 3. サーバー側にある最新の Dao.java をコンパイル（元ファイルが存在する場合のみ実行する安全な書き方に変更）
+          # 4. サーバー側にある最新の Dao.java をコンパイル
           if [ -f "/opt/tomcat10/webapps/score/WEB-INF/classes/dao/Dao.java" ]; then
             sudo javac -cp "/opt/tomcat10/lib/*:/opt/tomcat10/webapps/score/WEB-INF/classes" -d /opt/tomcat10/webapps/score/WEB-INF/classes /opt/tomcat10/webapps/score/WEB-INF/classes/dao/Dao.java
           fi
           
-          # 4. Tomcatを起動
+          # 5. Tomcatのキャッシュを消去し、1回だけ綺麗に起動する（多重起動を防止）
           sudo rm -rf /opt/tomcat10/work/Catalina/localhost/score
-          sudo /opt/tomcat10/bin/shutdown.sh
           sudo /opt/tomcat10/bin/startup.sh
